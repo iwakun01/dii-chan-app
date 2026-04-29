@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>ぢいちゃん QOLマネージャー / 設計概要</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-primary: #0d1017;
+    --bg-secondary: #161b24;
+    --bg-tertiary: #1f2632;
+    --bg-elevated: #252d3d;
+    --accent-pink: #ff6b9d;
+    --accent-cyan: #4dd4ff;
+    --accent-yellow: #ffd166;
+    --accent-green: #6bff9d;
+    --accent-purple: #c084fc;
+    --accent-red: #ff6b6b;
+    --text-primary: #e8ecf1;
+    --text-secondary: #9aa5b8;
+    --text-muted: #5c6878;
+    --border: #2a3344;
+    --border-strong: #3d4859;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  /* ノイズオーバーレイ */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0.5;
+  }
+
+  /* ヒーロー */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 24px;
+    position: relative;
+    background:
+      radial-gradient(ellipse at 20% 30%, rgba(255, 107, 157, 0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 70%, rgba(77, 212, 255, 0.12) 0%, transparent 50%),
+      var(--bg-primary);
+  }
+
+  .hero-content {
+    max-width: 900px;
+    text-align: center;
+    z-index: 2;
+  }
+
+  .hero-tag {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent-pink);
+    letter-spacing: 0.3em;
+    padding: 6px 14px;
+    border: 1px solid var(--accent-pink);
+    border-radius: 2px;
+    margin-bottom: 32px;
+    text-transform: uppercase;
+  }
+
+  .hero h1 {
+    font-size: clamp(48px, 8vw, 96px);
+    font-weight: 900;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin-bottom: 24px;
+  }
+
+  .hero h1 .pink { color: var(--accent-pink); }
+  .hero h1 .cyan { color: var(--accent-cyan); }
+
+  .hero-subtitle {
+    font-size: 18px;
+    color: var(--text-secondary);
+    margin-bottom: 48px;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .hero-meta {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    flex-wrap: wrap;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .hero-meta span { color: var(--text-secondary); }
+
+  .scroll-hint {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.2em;
+    animation: bounce 2s infinite;
+  }
+
+  @keyframes bounce {
+    0%, 100% { transform: translateX(-50%) translateY(0); opacity: 0.6; }
+    50% { transform: translateX(-50%) translateY(8px); opacity: 1; }
+  }
+
+  /* セクション共通 */
+  section.content {
+    padding: 120px 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--accent-pink);
+    letter-spacing: 0.3em;
+    margin-bottom: 16px;
+  }
+
+  .section-title {
+    font-size: clamp(32px, 5vw, 56px);
+    font-weight: 900;
+    line-height: 1.1;
+    margin-bottom: 24px;
+    letter-spacing: -0.02em;
+  }
+
+  .section-lead {
+    font-size: 18px;
+    color: var(--text-secondary);
+    max-width: 700px;
+    margin-bottom: 64px;
+  }
+
+  /* チャット風モックアップ */
+  .chat-mockup {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 24px;
+    border: 1px solid var(--border);
+    max-width: 580px;
+    margin: 0 auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  }
+
+  .chat-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+
+  .chat-channel {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .chat-channel::before { content: '# '; color: var(--text-muted); }
+
+  .chat-msg {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    align-items: flex-start;
+  }
+
+  .avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 18px;
+  }
+
+  .avatar.pipi {
+    background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+    color: white;
+    font-size: 22px;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-weight: 700;
+  }
+
+  .avatar.user {
+    background: linear-gradient(135deg, var(--accent-cyan), #2a8cdf);
+    color: white;
+  }
+
+  .msg-body { flex: 1; }
+
+  .msg-name {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+
+  .msg-name.pipi { color: var(--accent-pink); }
+  .msg-name.user { color: var(--accent-cyan); }
+
+  .msg-name .timestamp {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: 8px;
+  }
+
+  .msg-text {
+    color: var(--text-primary);
+    font-size: 14.5px;
+    line-height: 1.6;
+  }
+
+  .btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .discord-btn {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    color: var(--text-primary);
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+
+  .discord-btn:hover { background: var(--bg-tertiary); border-color: var(--accent-pink); }
+  .discord-btn.primary { background: #5865f2; border-color: #5865f2; }
+  .discord-btn.success { background: #248046; border-color: #248046; }
+  .discord-btn.danger { background: #80373c; border-color: #80373c; }
+  .discord-btn.warning { background: #a06d28; border-color: #a06d28; }
+
+  /* 24時間円グラフ */
+  .clock-display {
+    display: flex;
+    gap: 48px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 32px;
+  }
+
+  .clock-svg {
+    width: 320px;
+    height: 320px;
+  }
+
+  .clock-legend {
+    flex: 1;
+    min-width: 240px;
+    max-width: 360px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    font-size: 14px;
+  }
+
+  .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .legend-time {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-right: 8px;
+  }
+
+  /* データフロー */
+  .flow-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-top: 48px;
+  }
+
+  .flow-node {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    position: relative;
+  }
+
+  .flow-node.user { border-left: 3px solid var(--accent-cyan); }
+  .flow-node.bot { border-left: 3px solid var(--accent-pink); }
+  .flow-node.data { border-left: 3px solid var(--accent-yellow); }
+  .flow-node.ai { border-left: 3px solid var(--accent-purple); }
+
+  .flow-node-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .flow-node-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .flow-node-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  /* データ構造図 */
+  .layers {
+    margin-top: 48px;
+  }
+
+  .layer {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px 28px;
+    margin-bottom: 16px;
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .layer-num {
+    font-family: 'DotGothic16', monospace;
+    font-size: 64px;
+    font-weight: 700;
+    color: var(--accent-pink);
+    line-height: 1;
+    flex-shrink: 0;
+    width: 80px;
+  }
+
+  .layer-body { flex: 1; min-width: 240px; }
+
+  .layer-name {
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent-cyan);
+    margin-bottom: 8px;
+    letter-spacing: 0.1em;
+  }
+
+  .layer-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .layer-desc {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+
+  .layer-sheet-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .sheet-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    padding: 3px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+
+  /* フェーズタイムライン */
+  .phases {
+    margin-top: 48px;
+    position: relative;
+  }
+
+  .phases::before {
+    content: '';
+    position: absolute;
+    left: 28px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--accent-pink), var(--accent-cyan));
+    opacity: 0.4;
+  }
+
+  .phase {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    padding: 16px 0;
+    position: relative;
+  }
+
+  .phase-num {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--bg-secondary);
+    border: 2px solid var(--accent-pink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent-pink);
+    flex-shrink: 0;
+    z-index: 1;
+    position: relative;
+  }
+
+  .phase.priority .phase-num {
+    background: var(--accent-pink);
+    color: var(--bg-primary);
+  }
+
+  .phase-body {
+    flex: 1;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-top: 4px;
+  }
+
+  .phase-meta {
+    display: flex;
+    gap: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .phase-meta .duration { color: var(--accent-yellow); }
+  .phase-meta .priority-tag { color: var(--accent-pink); }
+
+  .phase-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .phase-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .phase-done {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent-green);
+    margin-top: 8px;
+  }
+
+  .phase-done::before { content: '→ '; }
+
+  /* ADHD対策ボックス */
+  .adhd-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 48px;
+  }
+
+  .adhd-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .adhd-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent-pink), var(--accent-cyan));
+  }
+
+  .adhd-issue {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent-red);
+    margin-bottom: 8px;
+    letter-spacing: 0.1em;
+  }
+
+  .adhd-issue::before { content: '⚠ '; }
+
+  .adhd-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+  }
+
+  .adhd-solution {
+    font-size: 13.5px;
+    color: var(--text-secondary);
+  }
+
+  .adhd-solution::before {
+    content: '✓ ';
+    color: var(--accent-green);
+    font-weight: 700;
+  }
+
+  /* テックスタックテーブル */
+  .stack-table {
+    margin-top: 48px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .stack-row {
+    display: grid;
+    grid-template-columns: 200px 1fr 1fr;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+    gap: 16px;
+  }
+
+  .stack-row:last-child { border-bottom: none; }
+  .stack-row.header {
+    background: var(--bg-tertiary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  .stack-role { font-weight: 700; color: var(--accent-cyan); }
+  .stack-tech { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-primary); }
+  .stack-reason { font-size: 13px; color: var(--text-secondary); }
+
+  /* チャンネル説明 */
+  .channels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 48px;
+  }
+
+  .channel-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+  }
+
+  .channel-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .channel-name.daily { color: var(--accent-pink); }
+  .channel-name.memo { color: var(--accent-yellow); }
+  .channel-name.condition { color: var(--accent-cyan); }
+
+  .channel-purpose {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .channel-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+  }
+
+  /* セクション区切り */
+  .divider {
+    text-align: center;
+    margin: 80px auto;
+    max-width: 200px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    position: relative;
+  }
+
+  .divider::before, .divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 60px;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .divider::before { left: -60px; }
+  .divider::after { right: -60px; }
+
+  /* フッター */
+  footer {
+    padding: 60px 24px;
+    text-align: center;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+  }
+
+  footer .pipi-sig {
+    color: var(--accent-pink);
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+
+  /* スクロールアニメ */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+  }
+
+  .fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* レスポンシブ */
+  @media (max-width: 640px) {
+    .stack-row { grid-template-columns: 1fr; gap: 8px; }
+    .stack-row.header { display: none; }
+    .layer { padding: 20px; }
+    .layer-num { font-size: 48px; width: 60px; }
+    .phases::before { left: 22px; }
+    .phase-num { width: 44px; height: 44px; font-size: 14px; }
+    .clock-svg { width: 260px; height: 260px; }
+  }
+
+  /* 入れ替え選択メニュー(SelectMenu演出) */
+  .select-menu {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+  }
+
+  .select-menu .arrow { color: var(--text-muted); }
+
+  /* 注釈 */
+  .note {
+    background: var(--bg-secondary);
+    border-left: 3px solid var(--accent-yellow);
+    padding: 16px 20px;
+    margin-top: 32px;
+    border-radius: 0 4px 4px 0;
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .note-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent-yellow);
+    letter-spacing: 0.2em;
+    margin-bottom: 6px;
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-tag">PROJECT BRIEF / 2026</div>
+    <h1>
+      <span class="pink">ぢいちゃん</span>と<br>
+      <span class="cyan">人生を回す</span>
+    </h1>
+    <p class="hero-subtitle">
+      タスク・体調・時間記録・思いつきを、Discordひとつに集約する自分専用QOLマネージャー。<br>
+      開くのが億劫なアプリは、もういらない。
+    </p>
+    <div class="hero-meta">
+      <div>OWNER <span>user</span></div>
+      <div>STATUS <span>DESIGNED</span></div>
+      <div>TARGET <span>SELF-USE</span></div>
+      <div>NEXT <span>PHASE 0</span></div>
+    </div>
+  </div>
+  <div class="scroll-hint">SCROLL ↓</div>
+</section>
+
+<!-- 01: WHY -->
+<section class="content fade-in">
+  <div class="section-num">01 / WHY</div>
+  <h2 class="section-title">なぜ作るのか</h2>
+  <p class="section-lead">
+    タスク管理アプリを開く労力すら重い。スプレッドシートを起動するのが面倒。記録は続かない。スキップしたタスクは宙に浮く。──いつも同じ場所で詰まる。
+  </p>
+
+  <div class="adhd-grid">
+    <div class="adhd-card">
+      <div class="adhd-issue">PROBLEM 01</div>
+      <div class="adhd-title">アプリを開くのが億劫</div>
+      <div class="adhd-solution">既に毎日触っているDiscordをUIにする。新しい習慣を増やさない。</div>
+    </div>
+    <div class="adhd-card">
+      <div class="adhd-issue">PROBLEM 02</div>
+      <div class="adhd-title">計画は立つが実行で迷走</div>
+      <div class="adhd-solution">5分おきに追撃通知。ボタンひとつで「完了/延長/スキップ」が選べる。</div>
+    </div>
+    <div class="adhd-card">
+      <div class="adhd-issue">PROBLEM 03</div>
+      <div class="adhd-title">タスク・体調・時間がバラバラ</div>
+      <div class="adhd-solution">全部Sheetsに集約。AIが相関を読み解いて毎晩フィードバック。</div>
+    </div>
+    <div class="adhd-card">
+      <div class="adhd-issue">PROBLEM 04</div>
+      <div class="adhd-title">スキップしたタスクが消える</div>
+      <div class="adhd-solution">期限内の空きスロットに自動再配置。翌朝「○日に再配置したよ」と報告。</div>
+    </div>
+  </div>
+</section>
+
+<div class="divider">SECTION</div>
+
+<!-- 02: 朝のフロー -->
+<section class="content fade-in">
+  <div class="section-num">02 / MORNING</div>
+  <h2 class="section-title">朝、ぢいちゃんが<br>声をかけてくる</h2>
+  <p class="section-lead">
+    06:00、最初の通知が届く。睡眠・気分・やる気・モード(平日/休日)を聞かれ、通知ブロック時間帯を指定する。これだけで今日のスケジュールが完成する。
+  </p>
+
+  <div class="chat-mockup">
+    <div class="chat-header">
+      <div class="chat-channel">daily-tasks</div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar pipi">ぢ</div>
+      <div class="msg-body">
+        <div class="msg-name pipi">ぢいちゃん <span class="timestamp">今日 6:00</span></div>
+        <div class="msg-text">おはようさん。今日もぼちぼちいこうかの。<br>まず、何時間寝たんじゃ?</div>
+        <div class="btn-row">
+          <button class="discord-btn">〜4h</button>
+          <button class="discord-btn">4-5h</button>
+          <button class="discord-btn">5-6h</button>
+          <button class="discord-btn primary">6-7h</button>
+          <button class="discord-btn">7-8h</button>
+          <button class="discord-btn">8h+</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar pipi">ぢ</div>
+      <div class="msg-body">
+        <div class="msg-name pipi">ぢいちゃん <span class="timestamp">今日 6:01</span></div>
+        <div class="msg-text">今日の気分はどうじゃ? やる気はあるかの?</div>
+        <div class="btn-row">
+          <button class="discord-btn">気分 1</button>
+          <button class="discord-btn">2</button>
+          <button class="discord-btn primary">3</button>
+          <button class="discord-btn">4</button>
+          <button class="discord-btn">5</button>
+        </div>
+        <div class="btn-row">
+          <button class="discord-btn">やる気 1</button>
+          <button class="discord-btn">2</button>
+          <button class="discord-btn">3</button>
+          <button class="discord-btn primary">4</button>
+          <button class="discord-btn">5</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar pipi">ぢ</div>
+      <div class="msg-body">
+        <div class="msg-name pipi">ぢいちゃん <span class="timestamp">今日 6:02</span></div>
+        <div class="msg-text">さて、今日は仕事のある日かの? それとも休みかの?</div>
+        <div class="btn-row">
+          <button class="discord-btn primary">💼 仕事あり(平日モード)</button>
+          <button class="discord-btn">🏖 休み(休日モード)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar pipi">ぢ</div>
+      <div class="msg-body">
+        <div class="msg-name pipi">ぢいちゃん <span class="timestamp">今日 6:03</span></div>
+        <div class="msg-text">今日、通知止めといてほしい時間はあるかの?</div>
+        <div class="select-menu">
+          <span>⏰ 14:00-16:00 / 会議</span>
+          <span class="arrow">▼</span>
+        </div>
+        <div class="btn-row">
+          <button class="discord-btn">追加する</button>
+          <button class="discord-btn success">これでOK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider">SECTION</div>
+
+<!-- 03: 24時間円グラフ -->
+<section class="content fade-in">
+  <div class="section-num">03 / DAY VIEW</div>
+  <h2 class="section-title">今日が<br>一目でわかる</h2>
+  <p class="section-lead">
+    問診が終わると、24時間の円グラフが届く。タスクの色分け、ブロック時間帯はグレー、現在地は針で表示。スクロールしないと全体が見えない、はもう終わり。
+  </p>
+
+  <div class="clock-display">
+    <svg class="clock-svg" viewBox="0 0 200 200">
+      <!-- 背景円 -->
+      <circle cx="100" cy="100" r="90" fill="#161b24" stroke="#2a3344" stroke-width="1"/>
+
+      <!-- 時間目盛り -->
+      <g stroke="#3d4859" stroke-width="1">
+        <line x1="100" y1="10" x2="100" y2="18"/>
+        <line x1="190" y1="100" x2="182" y2="100"/>
+        <line x1="100" y1="190" x2="100" y2="182"/>
+        <line x1="10" y1="100" x2="18" y2="100"/>
+      </g>
+
+      <!-- 時間ラベル -->
+      <text x="100" y="28" text-anchor="middle" fill="#5c6878" font-size="9" font-family="JetBrains Mono">0</text>
+      <text x="178" y="103" text-anchor="middle" fill="#5c6878" font-size="9" font-family="JetBrains Mono">6</text>
+      <text x="100" y="180" text-anchor="middle" fill="#5c6878" font-size="9" font-family="JetBrains Mono">12</text>
+      <text x="22" y="103" text-anchor="middle" fill="#5c6878" font-size="9" font-family="JetBrains Mono">18</text>
+
+      <!-- セクター: 7-8 朝の散歩 (29.17~33.33%) ピンク -->
+      <path d="M 100 100 L 100 10 A 90 90 0 0 1 152.94 25.69 Z" fill="#ff6b9d" opacity="0.85"/>
+
+      <!-- 8-9 食事準備 (33.33~37.5%) シアン -->
+      <path d="M 100 100 L 152.94 25.69 A 90 90 0 0 1 178.18 50.93 Z" fill="#4dd4ff" opacity="0.85"/>
+
+      <!-- 9-12 集中タスク (37.5~50%) ピンク濃 -->
+      <path d="M 100 100 L 178.18 50.93 A 90 90 0 0 1 190 100 Z" fill="#ff6b9d" opacity="1"/>
+
+      <!-- 12-13 昼休み (50~54.17%) 黄 -->
+      <path d="M 100 100 L 190 100 A 90 90 0 0 1 178.18 149.07 Z" fill="#ffd166" opacity="0.85"/>
+
+      <!-- 13-14 軽タスク (54.17~58.33%) シアン -->
+      <path d="M 100 100 L 178.18 149.07 A 90 90 0 0 1 152.94 174.31 Z" fill="#4dd4ff" opacity="0.85"/>
+
+      <!-- 14-16 BLOCKED (会議) (58.33~66.67%) グレー -->
+      <path d="M 100 100 L 152.94 174.31 A 90 90 0 0 1 56.79 184.78 Z" fill="#3d4859" opacity="0.6"/>
+
+      <!-- 16-18 集中タスク (66.67~75%) ピンク -->
+      <path d="M 100 100 L 56.79 184.78 A 90 90 0 0 1 10 100 Z" fill="#ff6b9d" opacity="0.85"/>
+
+      <!-- 18-19 夕食 (75~79.17%) 黄 -->
+      <path d="M 100 100 L 10 100 A 90 90 0 0 1 21.82 50.93 Z" fill="#ffd166" opacity="0.85"/>
+
+      <!-- 19-22 自由 (79.17~91.67%) 紫 -->
+      <path d="M 100 100 L 21.82 50.93 A 90 90 0 0 1 84.05 11.39 Z" fill="#c084fc" opacity="0.7"/>
+
+      <!-- 22-24 睡眠準備 (91.67~100%) 暗 -->
+      <path d="M 100 100 L 84.05 11.39 A 90 90 0 0 1 100 10 Z" fill="#252d3d" opacity="0.85"/>
+
+      <!-- 中央 -->
+      <circle cx="100" cy="100" r="32" fill="#0d1017" stroke="#2a3344" stroke-width="1"/>
+      <text x="100" y="98" text-anchor="middle" fill="#e8ecf1" font-size="11" font-family="JetBrains Mono" font-weight="700">TODAY</text>
+      <text x="100" y="112" text-anchor="middle" fill="#9aa5b8" font-size="9" font-family="JetBrains Mono">workday</text>
+
+      <!-- 現在時刻の針 (例: 10:30) -->
+      <line x1="100" y1="100" x2="160" y2="62" stroke="#ff6b9d" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="100" cy="100" r="4" fill="#ff6b9d"/>
+    </svg>
+
+    <div class="clock-legend">
+      <div class="legend-item"><span class="legend-time">07:00</span><span class="legend-dot" style="background:#ff6b9d"></span>朝の散歩</div>
+      <div class="legend-item"><span class="legend-time">08:00</span><span class="legend-dot" style="background:#4dd4ff"></span>食事準備</div>
+      <div class="legend-item"><span class="legend-time">09:00</span><span class="legend-dot" style="background:#ff6b9d"></span>集中タスク(確定申告)</div>
+      <div class="legend-item"><span class="legend-time">12:00</span><span class="legend-dot" style="background:#ffd166"></span>昼休み</div>
+      <div class="legend-item"><span class="legend-time">13:00</span><span class="legend-dot" style="background:#4dd4ff"></span>軽タスク</div>
+      <div class="legend-item"><span class="legend-time">14:00</span><span class="legend-dot" style="background:#3d4859"></span>BLOCKED / 会議</div>
+      <div class="legend-item"><span class="legend-time">16:00</span><span class="legend-dot" style="background:#ff6b9d"></span>集中タスク</div>
+      <div class="legend-item"><span class="legend-time">18:00</span><span class="legend-dot" style="background:#ffd166"></span>夕食</div>
+      <div class="legend-item"><span class="legend-time">19:00</span><span class="legend-dot" style="background:#c084fc"></span>自由時間</div>
+      <div class="legend-item"><span class="legend-time">22:00</span><span class="legend-dot" style="background:#252d3d;border:1px solid #3d4859"></span>睡眠準備</div>
+    </div>
+  </div>
+</section>
+
+<div class="divider">SECTION</div>
+
+<!-- 04: ポモドーロ追撃 -->
+<section class="content fade-in">
+  <div class="section-num">04 / POMODORO</div>
+  <h2 class="section-title">5分おきに<br>追いかけてくる</h2>
+  <p class="section-lead">
+    タスクが始まると、5分おきに「まだやってる?」と通知が届く。完了/延長/スキップ/入れ替え/今日もう無理──ボタン1タップで進行する。
+  </p>
+
+  <div class="chat-mockup">
+    <div class="chat-header">
+      <div class="chat-channel">daily-tasks</div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar pipi">ぢ</div>
+      <div class="msg-body">
+        <div class="msg-name pipi">ぢいちゃん <span class="timestamp">今日 9:00</span></div>
+        <div class="msg-text">📝 <strong>【9:00-12:00】確定申告</strong> の時間じゃ、ぼちぼち始めようかの</div>
+        <div class="btn-row">
+          <button class="discord-btn success">✅ 完了</button>
+          <button class="discord-btn warning">⏰ +15分延長</button>
+          <button class="discord-btn">⏭ スキップ</button>
+          <button class="discord-btn">🔄 入れ替え</button>
+          <button class="discord-btn danger">🛌 今日もう無理</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar pipi">ぢ</div>
+      <div class="msg-body">
+        <div class="msg-name pipi">ぢいちゃん <span class="timestamp">今日 9:05</span></div>
+        <div class="msg-text">⏱ 経過 <strong>5分</strong> / 予定 180分。まだやっとるかの?</div>
+        <div class="btn-row">
+          <button class="discord-btn success">✅ 完了</button>
+          <button class="discord-btn warning">⏰ +15分</button>
+          <button class="discord-btn">⏭ スキップ</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar user">U</div>
+      <div class="msg-body">
+        <div class="msg-name user">ユーザー <span class="timestamp">今日 9:35</span></div>
+        <div class="msg-text">👆 完了 を押した</div>
+      </div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar pipi">ぢ</div>
+      <div class="msg-body">
+        <div class="msg-name pipi">ぢいちゃん <span class="timestamp">今日 9:35</span></div>
+        <div class="msg-text">✨ 35分で終わったか、よう頑張ったの。<br>次は <strong>【12:00-13:00】昼休み</strong>じゃ。ゆっくり休みんさい。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <div class="note-label">RULE</div>
+    ブロック時間帯(例: 14:00-16:00 会議)は通知が完全に止まる。明けると「お疲れさま、次は○○」で自然に再開。
+  </div>
+</section>
+
+<div class="divider">SECTION</div>
+
+<!-- 05: 思いつきメモ -->
+<section class="content fade-in">
+  <div class="section-num">05 / MEMO INBOX</div>
+  <h2 class="section-title">思いついたら<br>書き殴る</h2>
+  <p class="section-lead">
+    別チャンネルで何でも投げる。AIが「単発タスク」「継続タスク」「ただのメモ」を判定して、適切な場所に振り分けてくれる。
+  </p>
+
+  <div class="chat-mockup">
+    <div class="chat-header">
+      <div class="chat-channel">memo-inbox</div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar user">U</div>
+      <div class="msg-body">
+        <div class="msg-name user">ユーザー <span class="timestamp">今日 11:23</span></div>
+        <div class="msg-text">来週ぐらいに歯医者の予約しないと</div>
+      </div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar pipi">ぢ</div>
+      <div class="msg-body">
+        <div class="msg-name pipi">ぢいちゃん <span class="timestamp">今日 11:23</span></div>
+        <div class="msg-text">
+          🤖 一回きりの仕事として入れとくぞい<br>
+          <strong>歯医者の予約</strong> / 15分 / 5月4日〜10日に配置<br>
+          → 5/6(水) 10:00 にしておいたわい
+        </div>
+        <div class="btn-row">
+          <button class="discord-btn success">OK</button>
+          <button class="discord-btn">修正</button>
+          <button class="discord-btn">メモのまま保存</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar user">U</div>
+      <div class="msg-body">
+        <div class="msg-name user">ユーザー <span class="timestamp">今日 14:08</span></div>
+        <div class="msg-text">毎朝ストレッチ10分やりたい</div>
+      </div>
+    </div>
+
+    <div class="chat-msg">
+      <div class="avatar pipi">ぢ</div>
+      <div class="msg-body">
+        <div class="msg-name pipi">ぢいちゃん <span class="timestamp">今日 14:08</span></div>
+        <div class="msg-text">
+          🔁 毎日の習慣として入れとくぞい<br>
+          <strong>朝ストレッチ</strong> / 10分 / 毎日<br>
+          → master_recurringに追加、明日のテンプレから反映じゃ
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider">SECTION</div>
+
+<!-- 06: 3つのチャンネル -->
+<section class="content fade-in">
+  <div class="section-num">06 / CHANNELS</div>
+  <h2 class="section-title">3つのチャンネルで<br>役割を分ける</h2>
+  <p class="section-lead">
+    Discordサーバーに3つの専用チャンネルを作る。役割が明確だから、迷わない。
+  </p>
+
+  <div class="channels">
+    <div class="channel-card">
+      <div class="channel-name daily">#daily-tasks</div>
+      <div class="channel-purpose">execution channel</div>
+      <div class="channel-desc">朝の問診、24時間円グラフ、ポモドーロの進行、ボタン操作。1日のメイン舞台。</div>
+    </div>
+    <div class="channel-card">
+      <div class="channel-name memo">#memo-inbox</div>
+      <div class="channel-purpose">capture channel</div>
+      <div class="channel-desc">思いつきを何でも投げる場所。AIが分類して適切な場所に振り分ける。深掘りしない。</div>
+    </div>
+    <div class="channel-card">
+      <div class="channel-name condition">#condition</div>
+      <div class="channel-purpose">tracking channel</div>
+      <div class="channel-desc">体調や気分の自由記述、振り返り。AI分析の材料になる。日記のような感覚で。</div>
+    </div>
+  </div>
+</section>
+
+<div class="divider">SECTION</div>
+
+<!-- 07: データ構造 -->
+<section class="content fade-in">
+  <div class="section-num">07 / DATA</div>
+  <h2 class="section-title">3層構造で<br>柔軟に管理</h2>
+  <p class="section-lead">
+    マスター → 曜日×モード別テンプレート → 当日ログ。この3層があるから「今日だけ違うこと」も「毎日のこと」も両方無理なく扱える。
+  </p>
+
+  <div class="layers">
+    <div class="layer">
+      <div class="layer-num">01</div>
+      <div class="layer-body">
+        <div class="layer-name">MASTER LAYER</div>
+        <div class="layer-title">タスクの定義書</div>
+        <div class="layer-desc">毎日やる継続タスクと、いつかやる単発タスクを別々に管理。「平日のみ/休日のみ/両方」の使い分けもここで決める。</div>
+        <div class="layer-sheet-list">
+          <span class="sheet-tag">master_recurring</span>
+          <span class="sheet-tag">master_oneshot</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="layer">
+      <div class="layer-num">02</div>
+      <div class="layer-body">
+        <div class="layer-name">TEMPLATE LAYER</div>
+        <div class="layer-title">曜日×モード別の型</div>
+        <div class="layer-desc">15分刻み × 24時間 = 96スロット。マスターを更新するとここが自動で再生成される。平日/休日 × 月〜日で14パターン。</div>
+        <div class="layer-sheet-list">
+          <span class="sheet-tag">template_workday_mon〜sun</span>
+          <span class="sheet-tag">template_offday_mon〜sun</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="layer">
+      <div class="layer-num">03</div>
+      <div class="layer-body">
+        <div class="layer-name">DAILY LAYER</div>
+        <div class="layer-title">当日の実行ログ</div>
+        <div class="layer-desc">朝6時に自動生成。テンプレ + 単発タスク + ブロック区間を統合。実行状態(完了/スキップ/延長中)もここに刻まれる。</div>
+        <div class="layer-sheet-list">
+          <span class="sheet-tag">daily_2026-04-29</span>
+          <span class="sheet-tag">daily_2026-04-30</span>
+          <span class="sheet-tag">...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider">SECTION</div>
+
+<!-- 08: システム構成 -->
+<section class="content fade-in">
+  <div class="section-num">08 / ARCHITECTURE</div>
+  <h2 class="section-title">システム全体図</h2>
+  <p class="section-lead">
+    Discordが入口、Sheetsが脳、Botが手足、Claudeが知性。それぞれが役割を持って動く。
+  </p>
+
+  <div class="flow-grid">
+    <div class="flow-node user">
+      <div class="flow-node-tag">USER</div>
+      <div class="flow-node-title">Discord</div>
+      <div class="flow-node-desc">ユーザーの唯一の接点。iPhone/iPadのチャットUIで全操作が完結する。</div>
+    </div>
+    <div class="flow-node bot">
+      <div class="flow-node-tag">BOT</div>
+      <div class="flow-node-title">Railway上のNode.js</div>
+      <div class="flow-node-desc">discord.jsで常駐。ボタン受付、追撃通知、メッセージ処理を担当。</div>
+    </div>
+    <div class="flow-node data">
+      <div class="flow-node-tag">DATA</div>
+      <div class="flow-node-title">Google Sheets</div>
+      <div class="flow-node-desc">全データの保存先。GASによる定時処理(朝の生成、夜の分析)もここから動く。</div>
+    </div>
+    <div class="flow-node ai">
+      <div class="flow-node-tag">AI</div>
+      <div class="flow-node-title">Claude API</div>
+      <div class="flow-node-desc">自然言語の解釈、メモ分類、毎晩の振り返り分析。会話の知性を担う。</div>
+    </div>
+  </div>
+
+  <div class="stack-table">
+    <div class="stack-row header">
+      <div>役割</div>
+      <div>技術</div>
+      <div>選定理由</div>
+    </div>
+    <div class="stack-row">
+      <div class="stack-role">Bot本体</div>
+      <div class="stack-tech">discord.js (Node.js)</div>
+      <div class="stack-reason">公式SDK、ボタンインタラクション標準対応</div>
+    </div>
+    <div class="stack-row">
+      <div class="stack-role">ホスティング</div>
+      <div class="stack-tech">Railway</div>
+      <div class="stack-reason">常駐型Bot対応、月500時間+5ドル分の無料枠</div>
+    </div>
+    <div class="stack-row">
+      <div class="stack-role">データストア</div>
+      <div class="stack-tech">Google Sheets</div>
+      <div class="stack-reason">GAS連携、無料、可視化容易、手動編集も可</div>
+    </div>
+    <div class="stack-row">
+      <div class="stack-role">スケジューラ</div>
+      <div class="stack-tech">GAS時間トリガー</div>
+      <div class="stack-reason">朝6時の自動生成、夜の分析実行を担当</div>
+    </div>
+    <div class="stack-row">
+      <div class="stack-role">AI</div>
+      <div class="stack-tech">Claude API (Sonnet 4.5)</div>
+      <div class="stack-reason">自然言語解釈、日次分析、メモ振り分け</div>
+    </div>
+    <div class="stack-row">
+      <div class="stack-role">円グラフ</div>
+      <div class="stack-tech">QuickChart API</div>
+      <div class="stack-reason">URL指定で画像生成、Discord Embed対応、無料</div>
+    </div>
+  </div>
+</section>
+
+<div class="divider">SECTION</div>
+
+<!-- 09: フェーズ -->
+<section class="content fade-in">
+  <div class="section-num">09 / ROADMAP</div>
+  <h2 class="section-title">8段階の<br>開発ロードマップ</h2>
+  <p class="section-lead">
+    フェーズ1完成時点で、もう日常的に使い始める。完成度を上げてから使う、はNG。動くものを早く触ること。
+  </p>
+
+  <div class="phases">
+    <div class="phase priority">
+      <div class="phase-num">0</div>
+      <div class="phase-body">
+        <div class="phase-meta">
+          <span class="duration">⏱ 1日</span>
+          <span class="priority-tag">★ FOUNDATION</span>
+        </div>
+        <div class="phase-title">基盤準備</div>
+        <div class="phase-desc">Sheets雛形作成、Discord Botトークン取得、Railway環境構築</div>
+        <div class="phase-done">Botがオンライン表示される</div>
+      </div>
+    </div>
+
+    <div class="phase priority">
+      <div class="phase-num">1</div>
+      <div class="phase-body">
+        <div class="phase-meta">
+          <span class="duration">⏱ 3-4日</span>
+          <span class="priority-tag">★ MVP</span>
+        </div>
+        <div class="phase-title">MVP最小ループ</div>
+        <div class="phase-desc">master_recurring読み込み → 朝の通知 → ボタンでdone記録</div>
+        <div class="phase-done">朝に通知が来て、ボタン押せて、Sheetsに記録される</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-num">2</div>
+      <div class="phase-body">
+        <div class="phase-meta"><span class="duration">⏱ 2-3日</span></div>
+        <div class="phase-title">朝の問診 + モード切替</div>
+        <div class="phase-desc">体調・やる気・平日休日選択、template_workday/offday分離</div>
+        <div class="phase-done">朝に問診が来て、選択でテンプレが切り替わる</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-num">3</div>
+      <div class="phase-body">
+        <div class="phase-meta"><span class="duration">⏱ 3-4日</span></div>
+        <div class="phase-title">円グラフ + ポモドーロ追撃</div>
+        <div class="phase-desc">QuickChart統合、5分追撃、延長/スキップボタン</div>
+        <div class="phase-done">1日丸ごと進行できる</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-num">4</div>
+      <div class="phase-body">
+        <div class="phase-meta"><span class="duration">⏱ 2日</span></div>
+        <div class="phase-title">通知ブロック機能</div>
+        <div class="phase-desc">朝の問診でブロック時間帯指定、定期ブロック登録、Bot挙動制御</div>
+        <div class="phase-done">指定時間帯は通知が来ない</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-num">5</div>
+      <div class="phase-body">
+        <div class="phase-meta"><span class="duration">⏱ 3日</span></div>
+        <div class="phase-title">master_oneshot対応</div>
+        <div class="phase-desc">テンプレート自動生成、空きスロット探索、再スケジュール</div>
+        <div class="phase-done">単発タスクが正しく配置される</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-num">6</div>
+      <div class="phase-body">
+        <div class="phase-meta"><span class="duration">⏱ 2日</span></div>
+        <div class="phase-title">メモ機能</div>
+        <div class="phase-desc">#memo-inboxチャンネル、Claude分類、自動振り分け</div>
+        <div class="phase-done">チャットで投げれば配置される</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-num">7</div>
+      <div class="phase-body">
+        <div class="phase-meta"><span class="duration">⏱ 2日</span></div>
+        <div class="phase-title">日次分析</div>
+        <div class="phase-desc">夜の自動分析、翌朝のふりかえり表示</div>
+        <div class="phase-done">毎朝「昨日こうだったよ」が届く</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-num">8</div>
+      <div class="phase-body">
+        <div class="phase-meta"><span class="duration">⏱ 継続</span></div>
+        <div class="phase-title">微調整</div>
+        <div class="phase-desc">自分で使い込んで違和感を潰す</div>
+        <div class="phase-done">1ヶ月使って違和感ゼロ</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider">SECTION</div>
+
+<!-- 10: 設計の信念 -->
+<section class="content fade-in">
+  <div class="section-num">10 / PHILOSOPHY</div>
+  <h2 class="section-title">設計に込めた<br>5つの信念</h2>
+
+  <div class="adhd-grid">
+    <div class="adhd-card">
+      <div class="adhd-issue">PRINCIPLE 01</div>
+      <div class="adhd-title">新しい習慣を増やさない</div>
+      <div class="adhd-solution">既に使ってるDiscordがそのままUI。専用アプリは作らない。</div>
+    </div>
+    <div class="adhd-card">
+      <div class="adhd-issue">PRINCIPLE 02</div>
+      <div class="adhd-title">完璧を目指してから使わない</div>
+      <div class="adhd-solution">フェーズ1の段階で日常使用開始。機能追加より使い込みを優先。</div>
+    </div>
+    <div class="adhd-card">
+      <div class="adhd-issue">PRINCIPLE 03</div>
+      <div class="adhd-title">1日サボっても罪悪感ゼロ</div>
+      <div class="adhd-solution">「今日もう無理」を正規ボタンに。リカバリーが優先される設計。</div>
+    </div>
+    <div class="adhd-card">
+      <div class="adhd-issue">PRINCIPLE 04</div>
+      <div class="adhd-title">入力は3秒、見るのは一目</div>
+      <div class="adhd-solution">ボタンで完結、円グラフで全体把握。文字入力を強要しない。</div>
+    </div>
+    <div class="adhd-card">
+      <div class="adhd-issue">PRINCIPLE 05</div>
+      <div class="adhd-title">記録すれば、AIが考えてくれる</div>
+      <div class="adhd-solution">毎晩Claudeが分析。翌朝「こうしたらいいかも」が届く。</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="pipi-sig">— ぢいちゃんより、ぼちぼちやろうかの</div>
+  <div>QOL MANAGER / DESIGN OVERVIEW / 2026.04.29</div>
+</footer>
+
+<script>
+  // スクロールアニメ
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>
